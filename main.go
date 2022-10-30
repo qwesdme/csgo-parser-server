@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,8 +22,6 @@ var mtInts = map[string]int{}
 func main() {
 	app := fiber.New()
 	app.Use("/ws", func(c *fiber.Ctx) error {
-		// IsWebSocketUpgrade returns true if the client
-		// requested upgrade to the WebSocket protocol.
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)
 			return c.Next()
@@ -32,17 +29,10 @@ func main() {
 		return fiber.ErrUpgradeRequired
 	})
 	app.Get("/ws", websocket.New(websocketHandler))
-
-	app.Post("/", rootHandler)
 	log.Fatal(app.Listen(":3000"))
 }
 
-func rootHandler(c *fiber.Ctx) error {
-	return performTask(c)
-}
-
 func websocketHandler(c *websocket.Conn) {
-	// c.Locals is added to the *websocket.Conn
 	log.Println(c.Locals("allowed"))  // true
 	log.Println(c.Query("v"))         // 1.0
 	log.Println(c.Cookies("session")) // ""
@@ -61,162 +51,151 @@ func websocketHandler(c *websocket.Conn) {
 		path := mapData["path"]
 		mtInts[path] = mt
 		sockets[path] = c
-		performWebsocketTask(mapData)
+		safe(performWebsocketTask(mapData))
 		log.Printf("recv: %s", msg)
 	}
 }
 
-func performWebsocketTask(mapData map[string]string) {
+func performWebsocketTask(mapData map[string]string) error {
+	path := mapData["path"]
 	task := mapData["task"]
+	fmt.Println(task)
 	switch task {
 	case "test":
 		{
-			fmt.Println("Test")
+			return sendMessage(path, "Test")
 		}
-
 	case "parse_to_end":
 		{
-			fmt.Println("ParseToEnd")
-			parseToEnd(mapData["path"])
-		}
-	}
-}
-
-func performTask(c *fiber.Ctx) error {
-	mapData := jsonToMap(c.Body())
-	task := mapData["task"]
-	switch task {
-	case "test":
-		{
-			fmt.Println("Test")
+			return parseToEnd(path)
 		}
 	case "new_parser":
 		{
-			fmt.Println("Parse")
-			newParser(mapData["path"])
-
+			return newParser(path)
 		}
 	case "parse_header":
 		{
-			fmt.Println("ParseHeader")
-			parseHeader(mapData["path"])
-
+			return parseHeader(path)
 		}
 	case "parse_next_frame":
 		{
-			fmt.Println("ParseNextFrame")
-			return parseNextFrame(c, mapData["path"])
-
+			return parseNextFrame(path)
 		}
 	case "current_frame":
 		{
-			fmt.Println("CurrentFrame")
-			return currentFrame(c, mapData["path"])
+			return currentFrame(path)
 
 		}
 	case "frame_rate":
 		{
-			fmt.Println("FrameRate")
-			return frameRate(c, mapData["path"])
+			return frameRate(path)
 
 		}
 	case "in_game_tick":
 		{
-			fmt.Println("InGameTick")
-			return inGameTick(c, mapData["path"])
+			return inGameTick(path)
 
 		}
 	case "tick_rate":
 		{
-			fmt.Println("TickRate")
-			return tickRate(c, mapData["path"])
+			return tickRate(path)
 		}
 	case "close":
 		{
-			fmt.Println("TickRate")
-			closeParser(mapData["path"])
+			return closeParser(path)
 		}
 	default:
 		{
 			prefix := "register_event_handler:"
 			if strings.HasPrefix(task, prefix) {
 				event := strings.TrimPrefix(task, prefix)
-				return registerEventHandler(c, mapData["path"], event)
+				return registerEventHandler(path, event)
 			}
 			fmt.Println("Task unknown: " + task)
-			return c.SendStatus(fiber.StatusInternalServerError)
+			return sendError(path)
 		}
 	}
-	return c.SendStatus(fiber.StatusOK)
 }
 
-func closeParser(path string) {
-	parser := parsers[path]
-	safe(parser.Close())
+func sendMessage(path string, message string) error {
+	return sockets[path].WriteMessage(mtInts[path], []byte(message))
+}
+func sendOk(path string) error {
+	return sendMessage(path, "Ok")
+}
+
+func sendError(path string) error {
+	return sendMessage(path, "Error")
+}
+
+func closeParser(path string) error {
+	err := sendOk(path)
+	safe(parsers[path].Close())
+	safe(sockets[path].Close())
+	delete(mtInts, path)
 	delete(parsers, path)
 	delete(headers, path)
+	return err
 }
 
-func currentFrame(c *fiber.Ctx, path string) error {
+func currentFrame(path string) error {
 	parser := parsers[path]
 	tr := parser.CurrentFrame()
 	trs := fmt.Sprintf("%v\n", tr)
-	println(trs)
-	return c.SendString(trs)
+	return sendMessage(path, trs)
 }
 
-func parseNextFrame(c *fiber.Ctx, path string) error {
+func parseNextFrame(path string) error {
 	ok, err := parsers[path].ParseNextFrame()
 	safe(err)
 	if ok {
-		return c.SendString(strconv.FormatBool(ok))
+		return sendMessage(path, "true")
 	}
-	return c.SendStatus(fiber.StatusInternalServerError)
+	return sendMessage(path, "false")
 }
 
-func parseToEnd(path string) {
+func parseToEnd(path string) error {
 	safe(parsers[path].ParseToEnd())
-	safe(sockets[path].WriteMessage(mtInts[path], []byte("Done")))
+	return sendOk(path)
 }
 
-func frameRate(c *fiber.Ctx, path string) error {
+func frameRate(path string) error {
 	header := headers[path]
 	fr := header.FrameRate()
 	frs := fmt.Sprintf("%v\n", fr)
-	println(frs)
-	return c.SendString(frs)
+	return sendMessage(path, frs)
 }
-func inGameTick(c *fiber.Ctx, path string) error {
+func inGameTick(path string) error {
 	parser := parsers[path]
 	tr := parser.GameState().IngameTick()
 	trs := fmt.Sprintf("%v\n", tr)
-	println(trs)
-	return c.SendString(trs)
+	return sendMessage(path, trs)
 }
 
-func tickRate(c *fiber.Ctx, path string) error {
+func tickRate(path string) error {
 	parser := parsers[path]
 	tr := parser.TickRate()
 	trs := fmt.Sprintf("%v\n", tr)
-	println(trs)
-	return c.SendString(trs)
+	return sendMessage(path, trs)
 }
 
-func newParser(path string) {
+func newParser(path string) error {
 	fmt.Printf("%s\n", path)
 	f, err := os.Open(path)
 	safe(err)
 	parsers[path] = dem.NewParser(f)
+	return sendOk(path)
 }
-func parseHeader(path string) {
+func parseHeader(path string) error {
 	p := parsers[path]
 	h, err := p.ParseHeader()
 	headers[path] = h
 	fmt.Printf("%s\n", path)
 	safe(err)
+	return sendOk(path)
 }
 
-func registerEventHandler(c *fiber.Ctx, path string, event string) error {
+func registerEventHandler(path string, event string) error {
 	switch event {
 	case "PlayerHurt":
 		parsers[path].RegisterEventHandler(func(e events.PlayerHurt) {
@@ -245,8 +224,7 @@ func registerEventHandler(c *fiber.Ctx, path string, event string) error {
 			}
 
 			playerHurt := fmt.Sprintf("attacker_id:%v, user_id:%v, weapon:%s", attackerId, playerId, weaponName)
-			println(playerHurt)
-			safe(sockets[path].WriteMessage(mtInts[path], []byte(playerHurt)))
+			safe(sendMessage(path, playerHurt))
 		})
 	case "WeaponFire":
 		parsers[path].RegisterEventHandler(func(e events.WeaponFire) {
@@ -267,14 +245,13 @@ func registerEventHandler(c *fiber.Ctx, path string, event string) error {
 			}
 
 			weaponFire := fmt.Sprintf("user_id:%v, weapon:%s", shooterId, weaponName)
-			println(weaponFire)
-			safe(sockets[path].WriteMessage(mtInts[path], []byte(weaponFire)))
+			safe(sendMessage(path, weaponFire))
 		})
 	default:
 		fmt.Println("Event unknown: " + event)
-		return c.SendStatus(fiber.StatusInternalServerError)
+		return sendError(path)
 	}
-	return c.SendStatus(fiber.StatusOK)
+	return sendOk(path)
 }
 
 func jsonToMap(body []byte) map[string]string {
