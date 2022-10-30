@@ -52,7 +52,7 @@ func websocketHandler(c *websocket.Conn) {
 		mtInts[path] = mt
 		sockets[path] = c
 		safe(performWebsocketTask(mapData))
-		log.Printf("recv: %s", msg)
+		//log.Printf("recv: %s", msg)
 	}
 }
 
@@ -223,7 +223,7 @@ func registerEventHandler(path string, event string) error {
 				weaponName = e.Weapon.String()
 			}
 
-			playerHurt := fmt.Sprintf("attacker_id:%v, user_id:%v, weapon:%s", attackerId, playerId, weaponName)
+			playerHurt := fmt.Sprintf("event:PlayerHurt, attacker_id:%v, user_id:%v, weapon:%s", attackerId, playerId, weaponName)
 			safe(sendMessage(path, playerHurt))
 		})
 	case "WeaponFire":
@@ -244,7 +244,7 @@ func registerEventHandler(path string, event string) error {
 				shooterId = e.Shooter.UserID
 			}
 
-			weaponFire := fmt.Sprintf("user_id:%v, weapon:%s", shooterId, weaponName)
+			weaponFire := fmt.Sprintf("event:WeaponFire, user_id:%v, weapon:%s", shooterId, weaponName)
 			safe(sendMessage(path, weaponFire))
 		})
 	default:
