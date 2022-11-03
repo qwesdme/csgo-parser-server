@@ -3,17 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	dispatch "github.com/markus-wa/godispatch"
-	"log"
-	"os"
-	strconv "strconv"
-	"strings"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	dem "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs"
 	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/common"
 	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/events"
+	dispatch "github.com/markus-wa/godispatch"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 var parsers = map[string]dem.Parser{}
@@ -22,8 +22,6 @@ var sockets = map[string]*websocket.Conn{}
 var mtInts = map[string]int{}
 
 var markedFrames = map[string][]int{}
-
-//var currentFrameToEnd int
 
 func main() {
 	app := fiber.New()
@@ -89,14 +87,9 @@ func performWebsocketTask(mapData map[string]string) error {
 		{
 			return currentFrame(path)
 		}
-	//case "current_playing":
-	//	{
-	//		return currentPlaying(path)
-	//	}
 	case "frame_rate":
 		{
 			return frameRate(path)
-
 		}
 	case "in_game_tick":
 		{
@@ -178,11 +171,6 @@ func currentFrame(path string) error {
 	return sendMessage(path, trs)
 }
 
-//func currentPlaying(path string) error {
-//	playingStr := playingStr(path)
-//	return sendMessage(path, playingStr)
-//}
-
 func playingStr(path string) string {
 	parser := parsers[path]
 	playing := parser.GameState().Participants().Playing()
@@ -196,18 +184,20 @@ func playingStr(path string) string {
 		playingStr += fmt.Sprintf("%v,%v,%v,", player.LastAlivePosition.X, player.LastAlivePosition.Y, player.LastAlivePosition.Z)
 		playerVelocity := player.Velocity()
 		playingStr += fmt.Sprintf("%v,%v,%v,", playerVelocity.X, playerVelocity.Y, playerVelocity.Z)
-		activeWeapon := player.ActiveWeapon()
-		var weaponName string
-		if activeWeapon == nil {
-			weaponName = "Unknown"
-		} else {
-			weaponName = activeWeapon.String()
-		}
-		playingStr += fmt.Sprintf("%s,", weaponName)
+		playingStr += fmt.Sprintf("%s,", activeWeapon(player))
 		playingStr += fmt.Sprintf("%v,%v,", player.ViewDirectionX(), player.ViewDirectionY())
 		playingStr += fmt.Sprintf("%v,%v", player.IsDucking(), player.Health())
 	}
 	return playingStr
+}
+
+func activeWeapon(player *common.Player) string {
+	activeWeapon := player.ActiveWeapon()
+	if activeWeapon == nil {
+		return "Unknown"
+	} else {
+		return activeWeapon.String()
+	}
 }
 
 func parseNextFrame(path string) error {
@@ -224,20 +214,18 @@ func parseToEnd(path string) error {
 	return sendOk(path)
 }
 func parseToEndWithMarkedFrames(path string) error {
-	//currentFrameToEnd = 0
-	//safe(parsers[path].ParseToEnd())
 	var err error
 	p := parsers[path]
+	now := time.Now()
 	for ok := true; ok; ok, err = p.ParseNextFrame() {
 		safe(err)
 		currentFrame := p.CurrentFrame()
 		if isFrameExist(markedFrames[path], currentFrame) {
-			//markedFrame := fmt.Sprintf("event:MarkedFrame, frame:%v, %s", currentFrame, playingStr(path))
 			markedFrame := fmt.Sprintf("%v,%s", currentFrame, playingStr(path))
-			//fmt.Printf("event:MarkedFrame, frame:%v\n", currentFrame)
 			safe(sendMessage(path, markedFrame))
 		}
 	}
+	fmt.Printf("Second pass done in %v\n", time.Since(now))
 	return sendOk(path)
 }
 
@@ -281,82 +269,59 @@ func registerEventHandler(path string, event string) error {
 	case "PlayerHurt":
 		{
 			parsers[path].RegisterEventHandler(func(e events.PlayerHurt) {
-				attacker := e.Attacker
-				var attackerId int
-				if attacker == nil {
-					attackerId = 0
-				} else {
-					attackerId = e.Attacker.UserID
-				}
-
-				player := e.Player
-				var playerId int
-				if player == nil {
-					playerId = 0
-				} else {
-					playerId = e.Player.UserID
-				}
-
-				weapon := e.Weapon
-				var weaponName string
-				if weapon == nil {
-					weaponName = "Unknown"
-				} else {
-					weaponName = e.Weapon.String()
-				}
-
+				attackerId := userID(e.Attacker)
+				playerId := userID(e.Player)
+				weaponName := weaponName(e.Weapon)
 				frame := parsers[path].CurrentFrame()
 
 				playerHurt := fmt.Sprintf("event:PlayerHurt, attacker_id:%v, player_id:%v, weapon:%s, frame:%v", attackerId, playerId, weaponName, frame)
-				//fmt.Printf("%s\n", playerHurt)
 				safe(sendMessage(path, playerHurt))
 			})
 		}
 	case "WeaponFire":
 		{
 			parsers[path].RegisterEventHandler(func(e events.WeaponFire) {
-				weapon := e.Weapon
-				var weaponName string
-				if weapon == nil {
-					weaponName = "Unknown"
-				} else {
-					weaponName = e.Weapon.String()
-				}
-
-				shooter := e.Shooter
-				var shooterId int
-				if shooter == nil {
-					shooterId = 0
-				} else {
-					shooterId = e.Shooter.UserID
-				}
-
+				weaponName := weaponName(e.Weapon)
+				shooterId := userID(e.Shooter)
 				frame := parsers[path].CurrentFrame()
-
 				weaponFire := fmt.Sprintf("event:WeaponFire, player_id:%v, weapon:%s, frame:%v", shooterId, weaponName, frame)
 				fmt.Printf("%s\n", weaponFire)
 				safe(sendMessage(path, weaponFire))
 			})
 		}
-	case "MarkedFrame":
-		{
-			//parsers[path].RegisterEventHandler(func(e any) {
-			//	currentFrame := parsers[path].CurrentFrame()
-			//	if currentFrame != currentFrameToEnd {
-			//		if isFrameExist(markedFrames[path], currentFrame) {
-			//			markedFrame := fmt.Sprintf("event:MarkedFrame, frame:%v, %s", currentFrame, playingStr(path))
-			//			fmt.Printf("event:MarkedFrame, frame:%v\n", currentFrame)
-			//			safe(sendMessage(path, markedFrame))
-			//		}
-			//	}
-			//})
-		}
+	//case "MarkedFrame":
+	//	{
+	//parsers[path].RegisterEventHandler(func(e any) {
+	//	currentFrame := parsers[path].CurrentFrame()
+	//	if currentFrame != currentFrameToEnd {
+	//		if isFrameExist(markedFrames[path], currentFrame) {
+	//			markedFrame := fmt.Sprintf("event:MarkedFrame, frame:%v, %s", currentFrame, playingStr(path))
+	//			fmt.Printf("event:MarkedFrame, frame:%v\n", currentFrame)
+	//			safe(sendMessage(path, markedFrame))
+	//		}
+	//	}
+	//})
+	//}
 	default:
 		fmt.Println("Event unknown: " + event)
 		return sendError(path)
 	}
 	fmt.Printf("Registered:%s\n", event)
 	return sendOk(path)
+}
+
+func weaponName(weapon *common.Equipment) string {
+	if weapon == nil {
+		return "Unknown"
+	}
+	return weapon.String()
+}
+
+func userID(player *common.Player) int {
+	if player == nil {
+		return 0
+	}
+	return player.UserID
 }
 
 func isFrameExist(s []int, i int) bool {
