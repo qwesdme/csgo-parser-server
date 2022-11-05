@@ -23,8 +23,12 @@ var mtInts = map[string]int{}
 
 var markedFrames = map[string]map[int]bool{}
 
+var app *fiber.App
+
 func main() {
-	app := fiber.New()
+	dem.DefaultParserConfig.IgnoreErrBombsiteIndexNotFound = true
+
+	app = fiber.New()
 	app.Use("/ws", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)
@@ -103,6 +107,11 @@ func performWebsocketTask(mapData map[string]string) error {
 	case "close":
 		{
 			return closeParser(path)
+		}
+	case "shutdown":
+		{
+			safe(sendOk(path))
+			return app.Shutdown()
 		}
 	default:
 		{
@@ -327,6 +336,10 @@ func jsonToMap(body []byte) map[string]string {
 
 func safe(err error) {
 	if err != nil {
-		panic(err)
+		if err == dem.ErrUnexpectedEndOfDemo {
+			fmt.Println("Warning: ErrUnexpectedEndOfDemo")
+		} else {
+			panic(err)
+		}
 	}
 }
