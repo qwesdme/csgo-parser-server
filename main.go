@@ -21,7 +21,7 @@ var headers = map[string]common.DemoHeader{}
 var sockets = map[string]*websocket.Conn{}
 var mtInts = map[string]int{}
 
-var markedFrames = map[string][]int{}
+var markedFrames = map[string]map[int]bool{}
 
 func main() {
 	app := fiber.New()
@@ -131,11 +131,11 @@ func performWebsocketTask(mapData map[string]string) error {
 
 func markFrames(path string, framesStr string) error {
 	frameStrSplit := strings.Split(framesStr, ",")
-	var frames []int
+	frames := map[int]bool{}
 	for _, frameStr := range frameStrSplit {
 		frame, err := strconv.Atoi(frameStr)
 		safe(err)
-		frames = append(frames, frame)
+		frames[frame] = true
 	}
 	markedFrames[path] = frames
 	return sendOk(path)
@@ -220,7 +220,7 @@ func parseToEndWithMarkedFrames(path string) error {
 	for ok := true; ok; ok, err = p.ParseNextFrame() {
 		safe(err)
 		currentFrame := p.CurrentFrame()
-		if isFrameExist(markedFrames[path], currentFrame) {
+		if markedFrames[path][currentFrame] {
 			markedFrame := fmt.Sprintf("%v,%s", currentFrame, playingStr(path))
 			safe(sendMessage(path, markedFrame))
 		}
@@ -285,23 +285,9 @@ func registerEventHandler(path string, event string) error {
 				shooterId := userID(e.Shooter)
 				frame := parsers[path].CurrentFrame()
 				weaponFire := fmt.Sprintf("event:WeaponFire, player_id:%v, weapon:%s, frame:%v", shooterId, weaponName, frame)
-				fmt.Printf("%s\n", weaponFire)
 				safe(sendMessage(path, weaponFire))
 			})
 		}
-	//case "MarkedFrame":
-	//	{
-	//parsers[path].RegisterEventHandler(func(e any) {
-	//	currentFrame := parsers[path].CurrentFrame()
-	//	if currentFrame != currentFrameToEnd {
-	//		if isFrameExist(markedFrames[path], currentFrame) {
-	//			markedFrame := fmt.Sprintf("event:MarkedFrame, frame:%v, %s", currentFrame, playingStr(path))
-	//			fmt.Printf("event:MarkedFrame, frame:%v\n", currentFrame)
-	//			safe(sendMessage(path, markedFrame))
-	//		}
-	//	}
-	//})
-	//}
 	default:
 		fmt.Println("Event unknown: " + event)
 		return sendError(path)
@@ -322,15 +308,6 @@ func userID(player *common.Player) int {
 		return 0
 	}
 	return player.UserID
-}
-
-func isFrameExist(s []int, i int) bool {
-	for _, v := range s {
-		if v == i {
-			return true
-		}
-	}
-	return false
 }
 
 func unregisterEventHandler(path string, handlerId string) error {
