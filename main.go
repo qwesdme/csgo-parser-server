@@ -139,7 +139,7 @@ func performWebsocketTask(mapData map[string]string) error {
 }
 
 func markFrames(path string, framesStr string) error {
-	frameStrSplit := strings.Split(framesStr, ",")
+	frameStrSplit := strings.Split(framesStr, "\t")
 	frames := map[int]bool{}
 	for _, frameStr := range frameStrSplit {
 		frame, err := strconv.Atoi(frameStr)
