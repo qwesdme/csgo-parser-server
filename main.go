@@ -189,13 +189,13 @@ func playingStr(path string) string {
 		if i > 0 {
 			playingStr += "\n"
 		}
-		playingStr += fmt.Sprintf("%v,%v,%v,%s,", player.UserID, player.FlashDuration, player.SteamID64, player.Name)
-		playingStr += fmt.Sprintf("%v,%v,%v,", player.LastAlivePosition.X, player.LastAlivePosition.Y, player.LastAlivePosition.Z)
+		playingStr += fmt.Sprintf("%v\t%v\t%v\t%s\t", player.UserID, player.FlashDuration, player.SteamID64, player.Name)
+		playingStr += fmt.Sprintf("%v\t%v\t%v\t", player.LastAlivePosition.X, player.LastAlivePosition.Y, player.LastAlivePosition.Z)
 		playerVelocity := player.Velocity()
-		playingStr += fmt.Sprintf("%v,%v,%v,", playerVelocity.X, playerVelocity.Y, playerVelocity.Z)
-		playingStr += fmt.Sprintf("%s,", activeWeapon(player))
-		playingStr += fmt.Sprintf("%v,%v,", player.ViewDirectionX(), player.ViewDirectionY())
-		playingStr += fmt.Sprintf("%v,%v", player.IsDucking(), player.Health())
+		playingStr += fmt.Sprintf("%v\t%v\t%v\t", playerVelocity.X, playerVelocity.Y, playerVelocity.Z)
+		playingStr += fmt.Sprintf("%s\t", activeWeapon(player))
+		playingStr += fmt.Sprintf("%v\t%v\t", player.ViewDirectionX(), player.ViewDirectionY())
+		playingStr += fmt.Sprintf("%v\t%v", player.IsDucking(), player.Health())
 	}
 	return playingStr
 }
@@ -230,7 +230,7 @@ func parseToEndWithMarkedFrames(path string) error {
 		safe(err)
 		currentFrame := p.CurrentFrame()
 		if markedFrames[path][currentFrame] {
-			markedFrame := fmt.Sprintf("%v,%s", currentFrame, playingStr(path))
+			markedFrame := fmt.Sprintf("%v\t%s", currentFrame, playingStr(path))
 			safe(sendMessage(path, markedFrame))
 		}
 	}
