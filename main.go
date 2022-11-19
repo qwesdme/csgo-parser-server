@@ -3,17 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
-	dem "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs"
-	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/common"
-	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/events"
-	dispatch "github.com/markus-wa/godispatch"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
+	dem "github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs"
+	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/common"
+	"github.com/markus-wa/demoinfocs-golang/v3/pkg/demoinfocs/events"
 )
 
 var parsers = map[string]dem.Parser{}
@@ -195,7 +195,22 @@ func playingStr(path string) string {
 		playingStr += fmt.Sprintf("%v\t%v\t%v\t", playerVelocity.X, playerVelocity.Y, playerVelocity.Z)
 		playingStr += fmt.Sprintf("%s\t", activeWeapon(player))
 		playingStr += fmt.Sprintf("%v\t%v\t", player.ViewDirectionX(), player.ViewDirectionY())
-		playingStr += fmt.Sprintf("%v\t%v", player.IsDucking(), player.Health())
+		playingStr += fmt.Sprintf("%v\t%v\t", player.IsDucking(), player.Health())
+
+		// values for head position
+		// 1 -eye pos
+		playerPositionEyes := player.PositionEyes()
+		playingStr += fmt.Sprintf("%v\t%v\t%v\t", playerPositionEyes.X, playerPositionEyes.Y, playerPositionEyes.Z)
+
+		// 2 - view direction, included above
+		// 3 - duck amount
+
+		duckAmount := 0.0
+		if duckAmountProperty, ok := player.Entity.PropertyValue("m_flDuckAmount"); ok {
+			duckAmount = float64(duckAmountProperty.FloatVal)
+		}
+
+		playingStr += fmt.Sprintf("%v", duckAmount)
 	}
 	return playingStr
 }
@@ -322,8 +337,7 @@ func userID(player *common.Player) int {
 func unregisterEventHandler(path string, handlerId string) error {
 	id, err := strconv.Atoi(handlerId)
 	safe(err)
-	var hid dispatch.HandlerIdentifier
-	hid = &id
+	hid := &id
 	parsers[path].UnregisterEventHandler(hid)
 	return sendOk(path)
 }
